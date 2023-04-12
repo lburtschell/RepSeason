@@ -1,9 +1,14 @@
 library(ggplot2)
 library(ggpubr)
 library(reshape2)
+library(rstatix)
 
 #Change working directory to folder with your files. This command works if you use RStudio, if you use R directly you will need to use setwd with the file location.
 setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
+
+#This script uses the datasets created with Create_heatmap_data.R and stored in a "Heatmaps" repository 
+
+#####Functions used  to plot heatmap###########
 
 plot_heatmap<-function(heatmap_df,title){
   heatmap_df$r_length[heatmap_df$lambda==0]<-NA
@@ -11,9 +16,8 @@ plot_heatmap<-function(heatmap_df,title){
     geom_tile()+
     scale_fill_gradient(low="white", high="red",na.value="grey",limits=c(0,1)) +
     coord_equal() + 
-    labs(x = "Environmental \n seasonality",y = "Environmental productivity",fill="Birth\nseasonality (r)",title=title)+
+    labs(x = "Environmental \n seasonality",y = "Environmental productivity",fill="Birth\nseasonality    \n(r)",title=title)+
     theme(plot.title = element_text(hjust = 0.5))
-  
 }
 
 plot_heatmap_lambda<-function(heatmap_df,title){
@@ -24,40 +28,47 @@ plot_heatmap_lambda<-function(heatmap_df,title){
     coord_equal() + 
     labs(x = "Environmental \n seasonality",y = "Environmental \n productivity",fill=expression(paste("Fitness (",lambda[ind],")")),title=title)+
     theme(plot.title = element_text(hjust = 0.5))
-  
 }
+
+MeanSd <- function(df_HX){
+  means<-round(aggregate(df_HX$value,list(df_HX$variable),FUN=mean, na.rm=TRUE)$x,2)
+  sds<-round(aggregate(df_HX$value,list(df_HX$variable),FUN=sd, na.rm=TRUE)$x,2)
+  return(paste(means,"Â±",sds))
+}
+
 ############################
 ###TEST H1 and H2##########
 ###########################
 # #normal H1 and H2
 load(file="Heatmaps/heatmap_df_N.RData")
 heatmap_df_N<-heatmap_df
-pH12a<-plot_heatmap(heatmap_df_N,"") 
+pH12a<-plot_heatmap(heatmap_df_N,"") + theme(legend.position = "bottom")
 pH12a_lambda<-plot_heatmap_lambda(heatmap_df_N,"u = 1; GR = 5g/day;\n IBI = 1.7 YL; M = 11.61%") #plot_heatmap(heatmap_df_N,"Normal conditions") 
 
 
 pH1<-ggplot(data = heatmap_df_N,aes(x=seasonality,y=r_length,color=as.factor(productivity),group=as.factor(productivity)))+
   geom_point(size=2)+
   geom_smooth(method=lm,se=FALSE)+
-  labs(x = "Environmental seasonality",y ="Birth seasonality (r)", colour="Environmental \n productivity",title="")
+  ylim(0,1)+
+  theme(legend.position = "right")+
+  labs(x = "Environmental seasonality",y ="Birth seasonality (r)", colour="Environmental\nproductivity",title="")
 
 pH2<-ggplot(data = heatmap_df_N,aes(x=productivity,y=r_length,color=as.factor(seasonality),group=as.factor(seasonality)))+
   geom_point(size=2)+
   geom_smooth(method=lm,se=FALSE)+
-  labs(x = "Environmental productivity",y ="Birth seasonality (r)", colour="Environmental \n seasonality",title="")
+  ylim(0,1)+
+  theme(legend.position = "right")+
+  labs(x = "Environmental productivity",y ="Birth seasonality (r)", colour="Environmental\nseasonality",title="")
 
-pH12b<-ggplot(heatmap_df_N,aes(x="",y=r_length))+ #x="Normal conditions"
-  geom_violin(draw_quantiles =0.5)+   #
-  stat_summary(fun="mean")+
-  scale_x_discrete(name="",)+
-  scale_y_continuous(name="Birth seasonality (r)",limits = c(0,1))+
-  theme(axis.title=element_text(size=12))
+# pH12b<-ggplot(heatmap_df_N,aes(x="",y=r_length))+ #x="Normal conditions"
+#   geom_violin(draw_quantiles =0.5)+   #
+#   stat_summary(fun="mean")+
+#   scale_x_discrete(name="",)+
+#   scale_y_continuous(name="Birth seasonality (r)",limits = c(0,1.06))+
+#   theme(axis.title=element_text(size=12))
 
-ph12b<-ggarrange(pH12b,NULL,ncol=2,nrow=1,widths = c(2.5,1))
 
-pH12<-ggarrange(pH12a,ph12b,ncol=1,nrow=2,heights = c(2,1), labels=c("A","B"),label.y = c(1,1.2))
-
-pFig2<-ggarrange(pH12,pH1,pH2,ncol=3, labels=c(NA,"C","D"))
+pFig2<-ggarrange(pH12a,pH1,pH2,ncol=3, labels=c("A","B","C"))
 
 ############################
 ########TEST H3############
@@ -96,33 +107,22 @@ df_H3<-data.frame("seasonality"=heatmap_df_N$seasonality,"productivity"=heatmap_
 
 df_H3<-melt(df_H3,measure.vars = c("U0","U1","U2","U3"))
 
-a<-c("U0","U1","U2","U3")
-
-comp<-combn(4,2,simplify = F)
-
 pH3b<-ggplot(df_H3,aes(x=variable,y=value))+
-  geom_violin(draw_quantiles =0.5)+  
-  geom_signif(comparisons = comp, map_signif_level=T,test="t.test",step_increase = 0.08)+
+  geom_violin(draw_quantiles =0.5)+ 
+  annotate("text",x=c(1,2,3,4),y=0.1+aggregate(df_H3$value,list(df_H3$variable),FUN=max, na.rm=TRUE)$x,label=MeanSd(df_H3))+
   stat_summary(fun="mean")+
   scale_x_discrete(name="Unpredictability", labels=c("0","1","2","3"))+
-  scale_y_continuous(name="Birth seasonality (r)",limits = c(0,1.3))+
+  scale_y_continuous(name="Birth seasonality (r)",limits = c(0,1.06))+
   theme(axis.title=element_text(size=12))
 
-pH3c<-ggplot(df_H3,aes(x=variable,y=value))+
-  geom_violin(draw_quantiles =0.5)+  
-  geom_signif(comparisons = comp, map_signif_level=T,test="var.test",step_increase = 0.08)+
-  stat_summary(fun="mean")+
-  scale_x_discrete(name="Unpredictability", labels=c("0","1","2","3"))+
-  scale_y_continuous(name="Birth seasonality (r)",limits = c(0,1.3))+
-  theme(axis.title=element_text(size=12))
 
-pFig3<-ggarrange(pH3a,pH3b,pH3c,ncol=1)
+pFig4<-ggarrange(pH3a,pH3b,ncol=1)
 
 
 ############################
 ########TEST H4############
 ############################
-#high growth rate (daily energy expenditure) GR = 1.5
+#high growth rate (daily reproductive energy expenditure) GR = 1.5
 load(file="Heatmaps/heatmap_df_GR15.RData")
 heatmap_df_GR15<-heatmap_df
 pGR15<-plot_heatmap(heatmap_df_GR15,"GR = 7.5 g/day")
@@ -139,18 +139,18 @@ df_H4<-data.frame("seasonality"=heatmap_df_N$seasonality,"productivity"=heatmap_
                   "GR1"=heatmap_df_N$r_length,"GR15"=heatmap_df_GR15$r_length)
 df_H4<-melt(df_H4,measure.vars = c("GR1","GR15"))
 
-comp<-combn(2,2,simplify = F)
 
 pH42<-ggplot(df_H4,aes(x=variable,y=value))+
   geom_violin(draw_quantiles = 0.5)+ 
-  geom_signif(comparisons = comp, map_signif_level=T,test="t.test",step_increase = 0.08)+
+  annotate("text",x=c(1,2),y=0.1+aggregate(df_H4$value,list(df_H4$variable),FUN=max, na.rm=TRUE)$x,label=MeanSd(df_H4))+
   stat_summary(fun="mean")+
-  scale_x_discrete(name="Growth rate (Daily energy expenditure)",labels=c("5 g/day","7.5 g/day"))+
-  scale_y_continuous(name="Birth seasonality (r)",limits = c(0,1))+
+  scale_x_discrete(name="Growth rate (Daily reproductive energy expenditure)",labels=c("5 g/day","7.5 g/day"))+
+  scale_y_continuous(name="Birth seasonality (r)",limits = c(0,1.06))+
   theme(axis.title=element_text(size=12))
 
+
 #final graph
-pFig4<-ggarrange(pH41,pH42,ncol=1,heights = c(2,1.5))
+pFig5<-ggarrange(pH41,pH42,ncol=1,heights = c(2,1.5))
 
          
 ############################
@@ -180,14 +180,13 @@ df_H5<-data.frame("seasonality"=heatmap_df_N$seasonality,"productivity"=heatmap_
                   "YL637"=heatmap_df_YL637$r_length,"YL425"=heatmap_df_YL425$r_length,"YL365"=heatmap_df_N$r_length)
 df_H5<-melt(df_H5,measure.vars = c("YL637","YL425","YL365"))
 
-comp<-combn(3,2,simplify = F)
 
 pH52<-ggplot(df_H5,aes(x=variable,y=value))+
   geom_violin(draw_quantiles = 0.5)+
-  geom_signif(comparisons = comp, map_signif_level=T,test="t.test",step_increase = 0.15)+
+  annotate("text",x=c(1,2,3),y=0.1+aggregate(df_H5$value,list(df_H5$variable),FUN=max, na.rm=TRUE)$x,label=MeanSd(df_H5))+
   stat_summary(fun="mean")+
   scale_x_discrete(name="Interbirth Interval (Reproductive cycle length)", labels=c("IBI = 1 YL","IBI = 1.5 YL","IBI = 1.7 YL")  )+
-  scale_y_continuous(name="Birth seasonality (r)",limits = c(0,1.2))+
+  scale_y_continuous(name="Birth seasonality (r)",limits = c(0,1.06))+
   theme(axis.title=element_text(size=12))
 
 ######################################
@@ -217,29 +216,28 @@ df_H6<-data.frame("seasonality"=heatmap_df_N$seasonality,"productivity"=heatmap_
                   "M0"=heatmap_df_M0$r_length,"M1"=heatmap_df_N$r_length,"M4"=heatmap_df_M4$r_length)
 df_H6<-melt(df_H6,measure.vars = c("M0","M1","M4"))
 
-comp<-combn(3,2,simplify = F)
 
 pH62<-ggplot(df_H6,aes(x=variable,y=value))+
   geom_violin(draw_quantiles = 0.5)+ 
-  geom_signif(comparisons = comp, map_signif_level=T,test="t.test",step_increase = 0.15)+
+  annotate("text",x=c(1,2,3),y=0.1+aggregate(df_H6$value,list(df_H6$variable),FUN=max, na.rm=TRUE)$x,label=MeanSd(df_H6))+
   stat_summary(fun="mean")+
   scale_x_discrete(name="Infant mortality", labels =c("0%", "11.61%", "46.44%"))+ 
-  scale_y_continuous(name="Birth seasonality (r)",limits = c(0,1.2))+
+  scale_y_continuous(name="Birth seasonality (r)",limits = c(0,1.06))+
   theme(axis.title=element_text(size=12))
 
 
 
 ############################
 
-pFig5<-ggarrange(pH52,pH62,ncol=1,heights = c(1,1),labels = c("A","B"))
+pFig6<-ggarrange(pH52,pH62,ncol=1,heights = c(1,1),labels = c("A","B"))
 
-pFigS8<-ggarrange(pYL637,pYL365,pYL425,pM0,pM1,pM4,common.legend = TRUE,ncol = 3,nrow=2,legend="left",labels = c("A",NA,NA,"B",NA,NA))
+pFigS7<-ggarrange(pYL637,pYL425,pYL365,pM0,pM1,pM4,common.legend = TRUE,ncol = 3,nrow=2,legend="left",labels = c("A",NA,NA,"B",NA,NA))
 
 ##########################
 #### Heatmap lambda #####
 #########################
 
-pFigS7<-ggarrange(pH12a_lambda,pU0_lambda,pU2_lambda,pU3_lambda,
+pFigS6<-ggarrange(pH12a_lambda,pU0_lambda,pU2_lambda,pU3_lambda,
                   pGR15_lambda,pYL637_lambda,pYL425_lambda,
                   pM0_lambda,pM4_lambda,common.legend = TRUE,ncol = 3,nrow=3)
 
@@ -251,17 +249,19 @@ pFigS7<-ggarrange(pH12a_lambda,pU0_lambda,pU2_lambda,pU3_lambda,
 #Figure 2
 pFig2
 
-#Figure 3 (two bottom panels merged for publication)
-pFig3
-
 #Figure 4
 pFig4
 
 #Figure 5
 pFig5
 
+#Figure 6
+pFig6
+
+#Figure S6
+pFigS6
+
 #Figure S7
 pFigS7
 
-#Figure S8
-pFigS8
+
