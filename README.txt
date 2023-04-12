@@ -18,6 +18,6 @@ The code in the file will automatically load all necessary input data from this 
 (/!\ the program is time consuming, we recommend you use powerfull computers or reduce the number of simulations and/or strategies tested)
 You can skip this part and use datsets already simulated in folder "Heatmaps"
 
-5.Use file "Plot_Heatmaps.R" to recreate Fig2-5 and Fig S7-8
+5.Use file "Plot_Heatmaps.R" to recreate Fig 2, 4, 5, 6, S6 and S7
 
 
