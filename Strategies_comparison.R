@@ -1,18 +1,31 @@
 library(RepSeason)
 library(popbio)
+library(plotly)
 
 #Change working directory to folder with your files. This command works if you use RStudio, if you use R directly you will need to use setwd with the file location.
 setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
 
 source("Functions/CircularFunctions.R") #create circular graphs and compute r_length
 
+#SIMULATION
 #number of simulations :
 nruns<-2000
+sizeEffectThreshold<-0.05 
+
+#PARAMETERS TO TEST
+#ecology
+seasonality<-1
+productivity<-1
+unpredictability<-1
+#life history
+growthRateCoef<-1
+mortalityCoef<-1
+yearLength<-365 #days
 
 #PHENOLOGY STRATEGY
-monthLength<-365/12
-test_beginningOfReproductiveWindow<-round(seq(1,365,by=monthLength)) #first day of each month
-test_lengthOfReproductiveWindow<-round(seq(1*monthLength,11*monthLength,by=monthLength))# 1 to 11 months
+monthLength<-yearLength/12
+test_beginningOfReproductiveWindow<-round(seq(1,yearLength,by=1*monthLength)) #first day of each month
+test_lengthOfReproductiveWindow<-round(seq(1*monthLength,11*monthLength,by=1*monthLength))# 1 to 11 months
 
 # PARAMETERS USED IN SIMULATION
 #raw parameters (from literature)
@@ -43,7 +56,6 @@ storageEfficiency<-0.9
 
 #raw data for NDVI & lifetime and cycling duration 
 load(file="Input/df_NDVI.RData")
-NDVI<-df_NDVI$NDVI
 load(file="Input/cyclingDurations.RData")
 load(file="Input/infantLifespans.RData")
 load(file="Input/juvenileLifespans.RData")
@@ -59,7 +71,26 @@ characteristicValueOfAge<-193
 characteristicValueOfNDVI<-0.117
 foetusProportionOfExternalMiscarriage<-0.07
 
+#modified parameters :
+#NDVI decomposition
+K<-mean(df_NDVI$NDVI)
+centeredNDVI<-df_NDVI$NDVI-K
+seasonalNDVI<-vector()
+for (i in 1:yearLength){
+  seasonalNDVI[i]=mean(centeredNDVI[df_NDVI$DayOfYear==i])
+}
+S<-seasonalNDVI[df_NDVI$DayOfYear]
+NS<-centeredNDVI-S #NDVI = K+S+NS
+NDVI<-productivity*K+seasonality*S+unpredictability*NS
+NDVI[NDVI>1]<-1
+NDVI[NDVI<0]<-0
 
+#growth rate and gestation length
+growthRate<-growthRate*growthRateCoef #kg/day
+gestationLength<-round(1.25*0.710/growthRate) #day
+
+#mortality
+infantProportionOfExternalDeaths<-infantProportionOfExternalDeaths*mortalityCoef
 
 ##################################################################################
 strategies_fitness<-data.frame()
@@ -121,8 +152,7 @@ for (beginningOfReproductiveWindow in test_beginningOfReproductiveWindow){
                           placentalProportion,
                           storageEfficiency,
                           weaningMass,
-                          365)
-      
+                          yearLength)
       
       Off_df<-data.frame()
       F_df<-data.frame(do.call(cbind,r$FoetusHistoric))
@@ -160,7 +190,7 @@ for (beginningOfReproductiveWindow in test_beginningOfReproductiveWindow){
       LambdaInd<-lambda(A)
       
       #record of fitness
-      strategies_fitness<-rbind(strategies_fitness,c(strategy,strategy_name,LambdaInd))
+      strategies_fitness<-rbind(strategies_fitness,c(strategy,strategy_name,beginningOfReproductiveWindow,lengthOfReproductiveWindow,LambdaInd))
       
       #record of births
       n_births<-length(I_df$birthTimes)
@@ -174,57 +204,64 @@ for (beginningOfReproductiveWindow in test_beginningOfReproductiveWindow){
 }
 
 # format strategies_fitness
-colnames(strategies_fitness)<-c("strategy","strategy_name","lambda")
+colnames(strategies_fitness)<-c("strategy","strategy_name","start","length","lambda")
 strategies_fitness$strategy<-as.factor(strategies_fitness$strategy)
 strategies_fitness$strategy_name<-as.factor(strategies_fitness$strategy_name)
+strategies_fitness$start<-as.numeric(strategies_fitness$start)
+strategies_fitness$length<-as.numeric(strategies_fitness$length)
 strategies_fitness$lambda<-as.numeric(strategies_fitness$lambda)
 
+
 # mean of fitness by strategy
-mean_strategies_fitness<-aggregate(strategies_fitness[3],list(strategies_fitness$strategy),mean)
-colnames(mean_strategies_fitness)<-c("strategy", "lambda")
+mean_strategies_fitness<-aggregate(strategies_fitness[3:5],list(strategies_fitness$strategy),mean)
+colnames(mean_strategies_fitness)<-c("strategy","start","length", "lambda")
+mean_strategies_fitness$start<-as.factor(mean_strategies_fitness$start)
+mean_strategies_fitness$length<-as.factor(mean_strategies_fitness$length)
 
 
 #COMPARISON OF LAMBDA
+#plot the comparison of these strategies (FIGURE 3)
+strategy_matrix<-strategy_matrix_rv<-matrix(,nrow=12,ncol=12)
+  for (i in 1:133){
+    strategy_matrix[mean_strategies_fitness$start[i],mean_strategies_fitness$length[i]]<-mean_strategies_fitness$lambda[i]
+  }
+
+pFig3<-plot_ly(x=levels(mean_strategies_fitness$length), y=levels(mean_strategies_fitness$start), z=strategy_matrix, type="surface",  contours = list(
+  z = list(show = TRUE, start = 0.95*max(mean_strategies_fitness$lambda), end = 10, size = 100,color='red'))) %>% 
+  layout(scene = list(
+    xaxis=list(title='Length (d)', autorange = "reversed"),
+    yaxis=list(title='Start (d)'),
+    zaxis=list(title='Fitness')))
 
 
-#select a sample of n strategies, including the best, the worst and the non seasonal strategies
-n_strategies<-10
+#select the non discriminated strategies (between the size effect threshold)
 ordered_strategies<-mean_strategies_fitness$strategy[order(mean_strategies_fitness$lambda, decreasing = TRUE)]
-non_seas_strat<-strategy # the non seasonal strategy is the last strategy tested in the previous loop
-ordered_seasonal_strategies<-setdiff(ordered_strategies,non_seas_strat) #keep only seasonal strategies
-#select a sample
-sample_strategies<-ordered_seasonal_strategies[round(seq(1,length(ordered_seasonal_strategies),length.out=n_strategies-1))]
-sample_strategies<-c(sample_strategies,non_seas_strat) # add the non seasonal strategy
-strategies_fitness_sample<-subset(strategies_fitness,strategies_fitness$strategy%in%sample_strategies)
-
-#list of side by side comparison with first strategy : 1,2 / 1,3 / 1,4 ... / 1,n
-comp<-list()
-for (s in 2:n_strategies){
-  comp<-c(comp,list(c(1,s)))
-}
-
-
-#plot the comparison of these strategies
-ggplot(strategies_fitness_sample,aes(x=reorder(strategy_name,-lambda,fun="mean"),y=lambda))+
-  geom_violin()+   #
-  geom_signif(comparisons = comp, map_signif_level=TRUE,test="t.test",step_increase = 0.09)+
-  stat_summary(fun="mean")+
-  scale_x_discrete(name="Phenology strategy")+
-  scale_y_continuous(name=expression(paste("Fitness (",lambda[ind],")")),breaks=c(0,0.25,0.5,0.75,1,1.25))+
-  theme(axis.title=element_text(size=12))
-
-#select the non discriminated strategies
 best<-ordered_strategies[1]
 others<-as.numeric(setdiff(ordered_strategies,best))
 non_discriminated<-as.numeric(as.character(best))
-for (s in others){
-  x<-subset(strategies_fitness,strategies_fitness$strategy==best)$lambda
-  y<-subset(strategies_fitness,strategies_fitness$strategy==s)$lambda
-  if(t.test(x,y)$p.value>0.05){ #the two samples are not significantly different
-    non_discriminated<-c(non_discriminated,s)
+x<-subset(strategies_fitness,strategies_fitness$strategy==best)$lambda
+if(mean(x)!=0){
+  for (s in others){
+    y<-subset(strategies_fitness,strategies_fitness$strategy==s)$lambda
+    if(mean(y)>(1-sizeEffectThreshold)*mean(x)){ #the decrease in mean fitness for strategy s is less than sizeEffectThjreshold%
+      non_discriminated<-c(non_discriminated,s)
+    } 
   }
+  
 }
+non_dis_char<-paste(as.character(non_discriminated),collapse=" ")
 
-#Plot circular graph for all births from non discriminated strategies 
+#Plot circular graph for all births from non discriminated strategies (FIGURE S5)
 all_births<-subset(strategies_births,strategies_births$strategy%in%non_discriminated)$birthTimes
-circular_graph(all_births,"Birth seasonality",365)
+pFigS5<-circular_graph(all_births,"Birth seasonality",365)
+
+
+##########################
+#### plots #####
+#########################
+
+#Figure 3
+pFig3
+
+#Figure S5
+pFigS5
