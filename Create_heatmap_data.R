@@ -5,14 +5,12 @@ library(popbio)
 #Change working directory to folder with your files. This command works if you use RStudio, if you use R directly you will need to use setwd with the file location.
 setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
 
-
-source("Functions/ExtractNDVI.R") #extract NDVI from coordinates
-source("Functions/ModifyNDVI.R") #interpol and extend NDVI (possibility to modify year length)
-
+source("Functions/CircularFunctions.R") #create circular graphs and compute r_length
 
 #SIMULATION
 #number of simulations :
 nruns<-2000
+sizeEffectThreshold<-0.05 
 
 #PARAMETERS TO TEST
 #ecology
@@ -34,6 +32,8 @@ load(file="Input/df_NDVI.RData")
       #load(file="Input/df_NDVI_YL637.RData")
 
 #2. if you want to load other NDVI from other coordinates
+      # source("Functions/ExtractNDVI.R") #extract NDVI from coordinates
+      # source("Functions/ModifyNDVI.R") #interpol and extend NDVI (possibility to modify year length)
       #raw_NDVI<-extractNDVI(37.04, -2.75, 37.11, -2.70) #Amboseli coordinates
       #df_NDVI<-modifyNDVI(raw_NDVI,yearLength, 3) #possibility to change the year length and repeat the time series 3 times
 
@@ -253,7 +253,8 @@ for (seasonality in test_seasonality){
       for (s in others){
         
         y<-subset(strategies_fitness,strategies_fitness$strategy==s)$lambda
-        if(t.test(x,y)$p.value>0.05){ #the two samples are not significantly different
+       if(mean(y)>(1-sizeEffectThreshold)*mean(x)){ #the decrease in mean fitness for strategy s is less than sizeEffectThjreshold%
+          
           non_discriminated<-c(non_discriminated,s)
         } 
       }
@@ -293,5 +294,3 @@ colnames(heatmap_df)<-c("seasonality","productivity",
                         "r_length","lambda")
 
 heatmap_df$r_length[heatmap_df$lambda==0]<-NA
-
-
